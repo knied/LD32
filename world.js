@@ -169,8 +169,8 @@ function World(gl, collide) {
 		minion.t = tile.t;
 		minion.maxSpeed = 4.0;
 		minion.setColor(vec3.fromValues(0.9, 0.9, 0.9));
-		var rx = Math.random() * this.tileSize - 0.5 * this.tileSize;
-		var ry = Math.random() * this.tileSize - 0.5 * this.tileSize;
+		var rx = (Math.random() * this.tileSize - 0.5 * this.tileSize) * 0.8;
+		var ry = (Math.random() * this.tileSize - 0.5 * this.tileSize) * 0.8;
 		minion.setTranslation(vec3.fromValues(x * this.tileSize + rx, 0.0, y * this.tileSize + ry));
 		this.minions.push(minion);
 		this.collide.addDynamic(minion);

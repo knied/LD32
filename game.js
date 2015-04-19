@@ -25,8 +25,8 @@ function Game(gl, audioContext) {
 
     this.program = null;
 
-    this.collide = new Collide();
-    this.camera = new Camera(this.width, this.height);
+    this.collide = null
+    this.camera = null
     this.world = null;
     this.player = null
     this.marker = null;
@@ -46,9 +46,8 @@ function Game(gl, audioContext) {
     this.resize();
 
     this.endOverlay = $("#end_overlay");
-    this.end = false;
-    this.countDown = 4.0;
-    this.count = 4;
+
+    this.state = 0;
     
     this.debugConsole.showMessage("Game object created");
 }
@@ -56,7 +55,9 @@ function Game(gl, audioContext) {
 Game.prototype.resize = function() {
     this.width = this.gl.drawingBufferWidth;
     this.height = this.gl.drawingBufferHeight;
-    this.camera.resize(this.width, this.height);
+    if (this.camera != null) {
+	this.camera.resize(this.width, this.height);
+    }
     this.debugConsole.setVariable("Width", this.width);
     this.debugConsole.setVariable("Height", this.height);
 }
@@ -109,10 +110,19 @@ Game.prototype.keyUp = function(key) {
 }
 
 Game.prototype.mouseDown = function(button) {
-    if (button == 0) {
-	this.drag = true;
+    if (this.state == 0) {
+	this.state = 1;
+	return;
+    }
+    if (this.state == 3) {
+	this.init();
+	this.state = 1;
+	return;
     }
     if (button == 2) {
+	this.drag = true;
+    }
+    if (button == 0) {
 	var target = this.camera.screenToXZPlane(this.prevX, this.prevY);
 	this.marker.setTranslation(target);
 	this.player.setTarget(target);
@@ -120,7 +130,7 @@ Game.prototype.mouseDown = function(button) {
 }
 
 Game.prototype.mouseUp = function(button) {
-    if (button == 0) {
+    if (button == 2) {
 	this.drag = false;
     }
 }
@@ -151,6 +161,12 @@ Game.prototype.mouseWheel = function(delta) {
 
 Game.prototype.init = function() {
     var gl = this.gl;
+
+    this.collide = new Collide();
+    this.camera = new Camera(this.width, this.height);
+    
+    this.countDown = 4.0;
+    this.count = 4;
     
     gl.enable(gl.CULL_FACE);
     gl.enable(gl.DEPTH_TEST);
@@ -199,39 +215,53 @@ Game.prototype.update = function(dt) {
 	this.yAngle -= 2.0 * Math.PI;
     }
 
-    this.camera.setCenter(this.player.translation);
-    if (this.countDown > 0.0) {
-	this.countDown -= dt;
-	if (this.countDown > 3.0) {
-	    this.show("3");
-	    if (this.count > 3) {
-		this.count = 3;
-		this.playSound("counter");
-	    }
-	} else if (this.countDown > 2.0) {
-	    this.show("2");
-	    if (this.count > 2) {
-		this.count = 2;
-		this.playSound("counter");
-	    }
-	} else if (this.countDown > 1.0) {
-	    this.show("1");
-	    if (this.count > 1) {
-		this.count = 1;
-		this.playSound("counter");
+    if (this.state == 0) {
+	this.show("Click to Start");
+    } else if (this.state == 1) {
+	this.camera.setCenter(this.player.translation);
+	if (this.countDown > 0.0) {
+	    this.countDown -= dt;
+	    if (this.countDown > 3.0) {
+		this.show("3");
+		if (this.count > 3) {
+		    this.count = 3;
+		    this.playSound("counter");
+		}
+	    } else if (this.countDown > 2.0) {
+		this.show("2");
+		if (this.count > 2) {
+		    this.count = 2;
+		    this.playSound("counter");
+		}
+	    } else if (this.countDown > 1.0) {
+		this.show("1");
+		if (this.count > 1) {
+		    this.count = 1;
+		    this.playSound("counter");
+		}
+	    } else {
+		this.show("GO!");
+		if (this.count > 0) {
+		    this.count = 0;
+		    this.playSound("counter");
+		}
 	    }
 	} else {
-	    this.show("GO!");
-	    if (this.count > 0) {
-		this.count = 0;
-		this.playSound("counter");
+	    if (this.player.dead == false && this.player.winner == false) {
+		this.endOverlay.empty();
 	    }
+	    this.world.update(dt);
 	}
-    } else {
-	if (this.player.dead == false && this.player.winner == false) {
-	    this.endOverlay.empty();
+    } else if (this.state == 2) {
+	this.countDown -= dt;
+	if (this.countDown < 0.0) {
+	    if (this.player.dead == true) {
+		this.show("Game Over<div id='sub_title_overlay'>Click to Restart</div>");
+	    } else {
+		this.show("You Win!<div id='sub_title_overlay'>Click to Restart</div>");
+	    }
+	    this.state = 3;
 	}
-	this.world.update(dt);
     }
 
     if (this.world.blip == true) {
@@ -247,8 +277,9 @@ Game.prototype.update = function(dt) {
     this.world.draw(this.program, V, P);
     if (this.player.dead == false && this.player.winner == false) {
 	this.marker.draw(this.program, V, P);
-    } else if (this.end == false) {
-	this.end = true;
+    } else if (this.state == 1) {
+	this.state = 2;
+	this.countDown = 1.0;
 	if (this.player.dead == true) {
 	    this.show("Game Over");
 	    this.playSound("gameOver");

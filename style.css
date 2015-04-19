@@ -30,3 +30,9 @@ canvas {
     pointer-events:none;
 }
 
+#sub_title_overlay {
+    font-size: 40px;
+    color: #FFF;
+    text-align: center;
+}
+
