@@ -1,6 +1,8 @@
 function Game(gl, audioContext) {
     this.gl = gl;
     this.audioContext = audioContext;
+    this.gainNode = this.audioContext.createGain();
+    this.gainNode.gain.value = 0.5;
 
     this.debugConsole = new DebugConsole($('#debug_overlay'));
     this.debugConsole.setVariable("FPS", 0);
@@ -12,24 +14,41 @@ function Game(gl, audioContext) {
     this.loader = new Loader(this.audioContext, this.debugConsole);
     this.loader.loadText("shader.vert", "vertexShader0");
     this.loader.loadText("shader.frag", "fragmentShader0");
-    this.loader.loadSound("hit.wav", "hit0");
-    this.loader.loadImage("test.png", "test");
+    this.loader.loadSound("gameOver.wav", "gameOver");
+    this.loader.loadSound("win.wav", "win");
+    this.loader.loadSound("blip.wav", "blip");
+    this.loader.loadSound("counter.wav", "counter");
     this.doneLoading = false;
     
     this.width = 0;
     this.height = 0;
 
     this.program = null;
-    this.texture = null;
-    this.mesh = null;
 
-    this.distance = 5.0;
+    this.collide = new Collide();
+    this.camera = new Camera(this.width, this.height);
+    this.world = null;
+    this.player = null
+    this.marker = null;
+    //this.enemies = [];
+    this.test = false;
+
+    this.moveXN = 0.0;
+    this.moveXP = 0.0;
+    this.moveZN = 0.0;
+    this.moveZP = 0.0;
+    this.move = vec3.create();
+
     this.drag = false;
     this.prevX = null;
     this.prevY = null;
-    this.rotation = quat.create();
     
     this.resize();
+
+    this.endOverlay = $("#end_overlay");
+    this.end = false;
+    this.countDown = 4.0;
+    this.count = 4;
     
     this.debugConsole.showMessage("Game object created");
 }
@@ -37,22 +56,66 @@ function Game(gl, audioContext) {
 Game.prototype.resize = function() {
     this.width = this.gl.drawingBufferWidth;
     this.height = this.gl.drawingBufferHeight;
+    this.camera.resize(this.width, this.height);
     this.debugConsole.setVariable("Width", this.width);
     this.debugConsole.setVariable("Height", this.height);
 }
 
 Game.prototype.keyDown = function(key) {
-    this.playSound("hit0");
+    //this.playSound("hit0");
     this.debugConsole.showMessage("KeyDown: " + key);
+    if (key == 87 || key == 38) { // up
+	this.moveZN = 1.0;
+    }
+    if (key == 65 || key == 37) { // left
+	this.moveXN = 1.0;
+    }
+    if (key == 83 || key == 40) { // down
+	this.moveZP = 1.0;
+    }
+    if (key == 68 || key == 39) { // right
+	this.moveXP = 1.0;
+    }
+    var moveX = this.moveXP - this.moveXN;
+    var moveZ = this.moveZP - this.moveZN;
+    this.move[0] = moveX;
+    this.move[1] = 0.0;
+    this.move[2] = moveZ;
+    vec3.normalize(this.move, this.move);
+
+    if (key == 32) this.test = !this.test;
 }
 
 Game.prototype.keyUp = function(key) {
     this.debugConsole.showMessage("KeyUp: " + key);
+    if (key == 87 || key == 38) { // up
+	this.moveZN = 0.0;
+    }
+    if (key == 65 || key == 37) { // left
+	this.moveXN = 0.0;
+    }
+    if (key == 83 || key == 40) { // down
+	this.moveZP = 0.0;
+    }
+    if (key == 68 || key == 39) { // right
+	this.moveXP = 0.0;
+    }
+    var moveX = this.moveXP - this.moveXN;
+    var moveZ = this.moveZP - this.moveZN;
+    this.move[0] = moveX;
+    this.move[1] = 0.0;
+    this.move[2] = moveZ;
+    vec3.normalize(this.move, this.move);
 }
 
 Game.prototype.mouseDown = function(button) {
     if (button == 0) {
 	this.drag = true;
+    }
+    if (button == 2) {
+	var target = this.camera.screenToXZPlane(this.prevX, this.prevY);
+	this.marker.setTranslation(target);
+	this.player.setTarget(target);
     }
 }
 
@@ -77,72 +140,53 @@ Game.prototype.mouseMove = function(x, y) {
 	this.prevY = y;
     }
     if (this.drag == true) {
-	var rotX = quat.create();
-	var rotY = quat.create();
-	quat.rotateY(rotX, rotX, relX / 100.0);
-	quat.rotateX(rotY, rotY, relY / 100.0);
-	quat.mul(this.rotation, rotX, this.rotation);
-	quat.mul(this.rotation, rotY, this.rotation);
+	this.camera.rotate(relY / 100.0, relX / 100.0);
     }
 }
 
 Game.prototype.mouseWheel = function(delta) {
     //this.debugConsole.showMessage("MouseWheel: " + delta);
-    this.distance += delta / 10.0;
-    if (this.distance < 2.5) this.distance = 2.5;
-    if (this.distance > 50.0) this.distance = 50.0;
+    //this.camera.zoom(delta / 10.0);
+}
+
+Game.prototype.init = function() {
+    var gl = this.gl;
+    
+    gl.enable(gl.CULL_FACE);
+    gl.enable(gl.DEPTH_TEST);
+    
+    // create the shader program
+    this.program = new GLProgram(gl);
+    this.program.load(this.loader.texts["vertexShader0"],
+		      this.loader.texts["fragmentShader0"]);
+
+    this.world = new World(gl, this.collide);
+    this.player = this.world.player;
+    
+    var markerGeometry = cubeGeometry(0.25, 0.25, 0.25);
+    this.marker = new GameObject(gl, markerGeometry);
+    this.marker.setColor(vec3.fromValues(1.0, 0.0, 0.0));
+    this.debugConsole.showMessage("Loading Complete");
 }
 
 Game.prototype.update = function(dt) {
     var gl = this.gl;
-    var width = this.width;
-    var height = this.height;
 
     this.debugConsole.setVariable("FPS", Math.round(1.0/dt));
-    
-    gl.viewport(0, 0, width, height);
-    gl.clearColor(0.0, 0.0, 0.0, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
 
-    this.debugConsole.update(dt);
+    gl.viewport(0, 0, this.width, this.height);
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    //this.debugConsole.update(dt);
     
     if (this.doneLoading == false) {
 	this.doneLoading = this.loader.done();
 	if (this.doneLoading == false) {
 	    return;
 	}
-
-	gl.enable(gl.CULL_FACE);
-	
-	// create the shader program
-	this.program = new GLProgram(gl);
-	this.program.load(this.loader.texts["vertexShader0"],
-			  this.loader.texts["fragmentShader0"]);
-	
-	// create textures
-	this.texture = new GLTexture(gl);
-	this.texture.load(this.loader.images["test"]);
-
-	// Create geometry data
-	var cube = cubeGeometry(2.0, 1.0, 1.0);
-
-	// create vertex buffer
-	this.mesh = new GLBuffer(gl);
-	this.mesh.load(cube.positions, cube.normals, cube.uvs);
-
-	this.debugConsole.showMessage("Loading Complete");
+	this.init();
     }
-
-    // Draw the scene
-    var translation = vec3.fromValues(0.0, 0.0, -this.distance);
-    var MV = mat4.create();
-    mat4.fromRotationTranslation(MV, this.rotation, translation);
-    var P = mat4.create();
-    mat4.perspective(P, 60.0 * 180.0 / Math.PI, this.width / this.height, 0.1, 100.0);
-    var N = mat3.create();
-    mat3.normalFromMat4(N, MV);
-    
-    this.mesh.draw(this.program, this.texture, {MV: MV, P: P, N: N});
 
     // Update the scene
     this.xAngle += dt;
@@ -154,11 +198,79 @@ Game.prototype.update = function(dt) {
     while (this.yAngle > 2.0 * Math.PI) {
 	this.yAngle -= 2.0 * Math.PI;
     }
+
+    this.camera.setCenter(this.player.translation);
+    if (this.countDown > 0.0) {
+	this.countDown -= dt;
+	if (this.countDown > 3.0) {
+	    this.show("3");
+	    if (this.count > 3) {
+		this.count = 3;
+		this.playSound("counter");
+	    }
+	} else if (this.countDown > 2.0) {
+	    this.show("2");
+	    if (this.count > 2) {
+		this.count = 2;
+		this.playSound("counter");
+	    }
+	} else if (this.countDown > 1.0) {
+	    this.show("1");
+	    if (this.count > 1) {
+		this.count = 1;
+		this.playSound("counter");
+	    }
+	} else {
+	    this.show("GO!");
+	    if (this.count > 0) {
+		this.count = 0;
+		this.playSound("counter");
+	    }
+	}
+    } else {
+	if (this.player.dead == false && this.player.winner == false) {
+	    this.endOverlay.empty();
+	}
+	this.world.update(dt);
+    }
+
+    if (this.world.blip == true) {
+	this.playSound("blip");
+	this.world.blip = false
+    }
+
+    // Draw the scene
+    this.camera.update();
+    var V = this.camera.V;
+    var P = this.camera.P;
+
+    this.world.draw(this.program, V, P);
+    if (this.player.dead == false && this.player.winner == false) {
+	this.marker.draw(this.program, V, P);
+    } else if (this.end == false) {
+	this.end = true;
+	if (this.player.dead == true) {
+	    this.show("Game Over");
+	    this.playSound("gameOver");
+	} else {
+	    this.show("You Win!");
+	    this.playSound("win");
+	}
+    }
 }
 
 Game.prototype.playSound = function(name) {
     var source = this.audioContext.createBufferSource();
     source.buffer = this.loader.sounds[name];
-    source.connect(this.audioContext.destination);
+    source.connect(this.gainNode);
+    this.gainNode.connect(this.audioContext.destination);
     source.start(0);
+}
+
+Game.prototype.show = function(text) {
+    this.endOverlay.empty();
+    this.endOverlay.append(text);
+    var top = 0.5 * this.height - 0.5 * this.endOverlay.height();
+    var left = 0.5 * this.width - 0.5 * this.endOverlay.width();
+    this.endOverlay.offset({top: top, left: left});
 }

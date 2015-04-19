@@ -20,3 +20,13 @@ canvas {
     top: 9px;
     pointer-events:none;
 }
+
+#end_overlay {
+    font-size: 80px;
+    color: #FFF;
+    position: absolute;
+    left: 9px;
+    top: 9px;
+    pointer-events:none;
+}
+
