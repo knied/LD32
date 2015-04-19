@@ -4,7 +4,7 @@ function Camera(width, height) {
     this.resize(width, height);
 
     this.center = vec3.create();
-    this.distance = 50.0;
+    this.distance = 40.0;
     this.angleY = Math.PI * 3.0 / 4.0;
     this.angleX = Math.PI * 2.0 / 8.0;
     this.rotation = quat.create();
